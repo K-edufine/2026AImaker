@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Rhythm Master - 실시간 통계 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f4f7f6; font-family: 'Pretendard', sans-serif; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(3, 1/3); gap: 20px; margin-bottom: 30px; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        .card h3 { margin: 0; color: #666; font-size: 16px; }
+        .card p { font-size: 28px; font-weight: bold; margin: 10px 0; color: #1a1a2e; }
+        .chart-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        canvas { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 AI 리듬 마스터 실시간 대시보드</h1>
+            <p>이담초등학교 정보과학부 데이터 분석 시스템</p>
+        </div>
+
+        <div class="summary-grid">
+            <div class="card"><h3>총 플레이 횟수</h3><p id="total-games">0</p></div>
+            <div class="card"><h3>평균 정확도</h3><p id="avg-acc">0%</p></div>
+            <div class="card"><h3>최고 점수</h3><p id="high-score">0</p></div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="poseChart"></canvas>
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // 부장님의 웹 앱 URL
+        const apiURL = "https://script.google.com/macros/s/AKfycbyNsrl2qXOpxWAI830Xb3Tts2MJshS7ahe0tbOFTC5sHsAWVkC5jyShkKTB5SFLhmM/exec";
+
+        async function updateDashboard() {
+            const response = await fetch(apiURL);
+            const data = await response.json();
+
+            // 1. 요약 통계 계산
+            document.getElementById("total-games").innerText = data.length + "회";
+            const avg = data.reduce((acc, cur) => acc + parseFloat(cur.accuracy), 0) / data.length;
+            document.getElementById("avg-acc").innerText = avg.toFixed(1) + "%";
+            document.getElementById("high-score").innerText = Math.max(...data.map(d => d.score)) + "점";
+
+            // 2. 동작별 성공 비율 차트 (원형)
+            const totalPoses = {
+                left: data.reduce((acc, cur) => acc + cur.left, 0),
+                right: data.reduce((acc, cur) => acc + cur.right, 0),
+                both: data.reduce((acc, cur) => acc + cur.both, 0)
+            };
+
+            new Chart(document.getElementById('poseChart'), {
+                type: 'pie',
+                data: {
+                    labels: ['왼손', '오른손', '양손'],
+                    datasets: [{
+                        data: [totalPoses.left, totalPoses.right, totalPoses.both],
+                        backgroundColor: ['#00f3ff', '#ff00ff', '#f5d300']
+                    }]
+                },
+                options: { plugins: { title: { display: true, text: '동작별 성공 분포' } } }
+            });
+
+            // 3. 정확도 변화 추이 차트 (꺾은선)
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: data.map((_, i) => i + 1 + "회차"),
+                    datasets: [{
+                        label: '정확도(%)',
+                        data: data.map(d => parseFloat(d.accuracy)),
+                        borderColor: '#1a1a2e',
+                        fill: false
+                    }]
+                },
+                options: { plugins: { title: { display: true, text: '학습 성취도 추이' } } }
+            });
+        }
+
+        updateDashboard();
+    </script>
+</body>
+</html>
