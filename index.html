@@ -2,234 +2,159 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Rhythm Master - AI 메이커 교육 과제</title>
+    <title>AI Rhythm Master - 161 BPM Demo</title>
     <style>
-        :root {
-            --neon-blue: #00f3ff;
-            --neon-pink: #ff00ff;
-            --bg-dark: #1a1a2e;
-        }
-        body {
-            background-color: var(--bg-dark);
-            color: white;
-            font-family: 'Pretendard', sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 0;
-            overflow: hidden;
-        }
+        :root { --neon-blue: #00f3ff; --neon-pink: #ff00ff; --bg-dark: #1a1a2e; }
+        body { background-color: var(--bg-dark); color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
         h1 { margin: 20px 0; color: var(--neon-blue); text-shadow: 0 0 10px var(--neon-blue); }
-        
-        #game-wrapper {
-            position: relative;
-            width: 400px;
-            height: 600px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid var(--neon-blue);
-            border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
-            overflow: hidden;
-        }
-        #webcam-container {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 120px;
-            height: 120px;
-            border: 2px solid var(--neon-pink);
-            border-radius: 10px;
-            z-index: 10;
-            overflow: hidden;
-        }
+        #game-wrapper { position: relative; width: 400px; height: 600px; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--neon-blue); border-radius: 15px; overflow: hidden; }
+        #webcam-container { position: absolute; top: 10px; right: 10px; width: 100px; height: 100px; border: 2px solid var(--neon-pink); border-radius: 10px; z-index: 10; overflow: hidden; }
         #webcam-container canvas { width: 100%; height: 100%; }
-        
         #game-canvas { width: 100%; height: 100%; }
-        
-        #ui-layer {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 5;
-        }
-        .score-board { font-size: 24px; font-weight: bold; color: var(--neon-pink); }
-        .feedback { font-size: 40px; font-weight: 800; color: white; margin-top: 100px; text-align: center; width: 400px; position: absolute; }
-
-        #start-btn {
-            padding: 15px 40px;
-            font-size: 20px;
-            background: transparent;
-            color: var(--neon-blue);
-            border: 2px solid var(--neon-blue);
-            border-radius: 30px;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-top: 20px;
-        }
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 5; }
+        .score-board { font-size: 20px; color: var(--neon-pink); font-weight: bold; }
+        .feedback { font-size: 40px; font-weight: 800; color: white; margin-top: 150px; text-align: center; width: 400px; position: absolute; pointer-events: none; }
+        #start-btn { padding: 15px 40px; font-size: 20px; background: transparent; color: var(--neon-blue); border: 2px solid var(--neon-blue); border-radius: 30px; cursor: pointer; margin-top: 20px; z-index: 100; }
         #start-btn:hover { background: var(--neon-blue); color: black; box-shadow: 0 0 20px var(--neon-blue); }
-        
-        #label-container { position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 12px; opacity: 0.5; }
     </style>
 </head>
 <body>
 
     <h1>AI RHYTHM MASTER</h1>
-    
     <div id="game-wrapper">
-        <div id="ui-layer">
-            <div class="score-board">SCORE: <span id="score">0</span></div>
-        </div>
+        <div id="ui-layer"><div class="score-board">SCORE: <span id="score">0</span></div></div>
         <div id="feedback" class="feedback"></div>
         <div id="webcam-container"></div>
         <canvas id="game-canvas"></canvas>
-        <div id="label-container"></div>
     </div>
+    <button type="button" id="start-btn" onclick="init()">161 BPM DEMO START</button>
 
-    <button type="button" id="start-btn" onclick="init()">GAME START</button>
+    <audio id="bgm" src="bgm.mp3" preload="auto"></audio>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     
     <script>
-        // 1. 부장님의 티쳐블 머신 주소로 변경해 주세요!
-        const URL = "https://teachablemachine.withgoogle.com/models/부장님의_모델_코드/"; 
+        const URL = "https://teachablemachine.withgoogle.com/models/c9h0TWwjV/"; 
+        let model, webcam, canvas, ctx, gameRunning = false;
+        let score = 0, currentPose = "대기", notes = [];
+        
+        // 📊 8주차 통계 데이터
+        let stats = { left: 0, right: 0, both: 0, miss: 0, total: 0 };
 
-        let model, webcam, labelContainer, maxPredictions;
-        let score = 0;
-        let canvas, ctx;
-        let notes = [];
-        let gameRunning = false;
-        let currentPose = "대기";
-
-        // 게임 설정
-        const LANES = [80, 200, 320]; // 왼손, 양손, 오른손 레인 좌표
-        const HIT_ZONE_Y = 520; // 판정선 높이
+        // 🎵 데모곡 설정 (161 BPM에 맞춘 20개 노트 구성)
+        const demoSong = [0, 2, 1, 0, 2, 1, 0, 2, 1, 1, 0, 0, 2, 2, 1, 0, 2, 1, 0, 1]; 
+        let noteIndex = 0;
+        const LANES = [80, 200, 320], HIT_ZONE_Y = 520;
 
         async function init() {
             document.getElementById("start-btn").style.display = "none";
-            
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
-
-            model = await tmImage.load(modelURL, metadataURL);
-            maxPredictions = model.getTotalClasses();
-
-            const flip = true;
-            webcam = new tmImage.Webcam(200, 200, flip);
-            await webcam.setup();
-            await webcam.play();
-            
+            model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+            webcam = new tmImage.Webcam(200, 200, true);
+            await webcam.setup(); await webcam.play();
             document.getElementById("webcam-container").appendChild(webcam.canvas);
             
-            // 캔버스 초기화
             canvas = document.getElementById("game-canvas");
-            canvas.width = 400;
-            canvas.height = 600;
+            canvas.width = 400; canvas.height = 600;
             ctx = canvas.getContext("2d");
             
-            labelContainer = document.getElementById("label-container");
-            for (let i = 0; i < maxPredictions; i++) {
-                labelContainer.appendChild(document.createElement("div"));
-            }
-
-            gameRunning = true;
+            // 초기화 및 음악 재생
+            gameRunning = true; score = 0; noteIndex = 0; notes = [];
+            stats = { left: 0, right: 0, both: 0, miss: 0, total: demoSong.length };
+            document.getElementById("bgm").currentTime = 0;
+            document.getElementById("bgm").play();
+            
             spawnNote();
             requestAnimationFrame(gameLoop);
         }
 
         function spawnNote() {
-            if(!gameRunning) return;
-            const laneIdx = Math.floor(Math.random() * 3);
-            const noteNames = ["왼손", "양손", "오른손"];
-            notes.push({
-                x: LANES[laneIdx],
-                y: -50,
-                type: noteNames[laneIdx],
-                color: laneIdx === 1 ? "#ff00ff" : "#00f3ff"
-            });
-            setTimeout(spawnNote, 1500); // 1.5초마다 노트 생성
+            if (!gameRunning || noteIndex >= demoSong.length) return;
+            const lane = demoSong[noteIndex++];
+            const types = ["왼손", "양손", "오른손"];
+            notes.push({ x: LANES[lane], y: -50, type: types[lane], color: lane === 1 ? "#ff00ff" : "#00f3ff" });
+            
+            // 💡 161 BPM 최적화: 2박자 간격인 745ms로 설정
+            setTimeout(spawnNote, 745); 
         }
 
         async function gameLoop() {
-            if(!gameRunning) return;
+            if (!gameRunning) return;
+            webcam.update(); await predict();
+            draw(); updateNotes();
             
-            webcam.update();
-            await predict();
-            
-            draw();
-            updateNotes();
-            
+            if (noteIndex >= demoSong.length && notes.length === 0) {
+                gameRunning = false;
+                document.getElementById("bgm").pause();
+                setTimeout(finishGame, 1000);
+                return;
+            }
             requestAnimationFrame(gameLoop);
         }
 
         function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // 판정선 그리기
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, HIT_ZONE_Y);
-            ctx.lineTo(400, HIT_ZONE_Y);
-            ctx.stroke();
-
-            // 노트 그리기
+            ctx.clearRect(0, 0, 400, 600);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, HIT_ZONE_Y); ctx.lineTo(400, HIT_ZONE_Y); ctx.stroke();
+            
             notes.forEach(note => {
                 ctx.fillStyle = note.color;
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = note.color;
-                ctx.beginPath();
-                ctx.arc(note.x, note.y, 25, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.shadowBlur = 15; ctx.shadowColor = note.color;
+                ctx.beginPath(); ctx.arc(note.x, note.y, 25, 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
             });
         }
 
         function updateNotes() {
             for (let i = notes.length - 1; i >= 0; i--) {
-                notes[i].y += 5; // 노트 낙하 속도
-
-                // 판정 체크
-                if (notes[i].y > HIT_ZONE_Y - 30 && notes[i].y < HIT_ZONE_Y + 30) {
+                // 💡 161 BPM에 맞춘 시원시원한 낙하 속도
+                notes[i].y += 8; 
+                
+                if (notes[i].y > HIT_ZONE_Y - 45 && notes[i].y < HIT_ZONE_Y + 45) {
                     if (currentPose === notes[i].type) {
                         showFeedback("GREAT!");
-                        score += 100;
-                        document.getElementById("score").innerText = score;
-                        notes.splice(i, 1);
-                        continue;
+                        score += 100; document.getElementById("score").innerText = score;
+                        if(notes[i].type === "왼손") stats.left++;
+                        else if(notes[i].type === "오른손") stats.right++;
+                        else stats.both++;
+                        notes.splice(i, 1); continue;
                     }
                 }
-
-                // 놓친 경우
-                if (notes[i].y > 600) {
-                    showFeedback("MISS");
-                    notes.splice(i, 1);
-                }
+                if (notes[i].y > 600) { showFeedback("MISS"); stats.miss++; notes.splice(i, 1); }
             }
         }
 
         function showFeedback(text) {
             const fb = document.getElementById("feedback");
-            fb.innerText = text;
-            fb.style.color = text === "GREAT!" ? "#00f3ff" : "#ff4d4d";
-            setTimeout(() => { if(fb.innerText === text) fb.innerText = ""; }, 500);
+            fb.innerText = text; fb.style.color = text === "GREAT!" ? "#00f3ff" : "#ff4d4d";
+            setTimeout(() => { if(fb.innerText === text) fb.innerText = ""; }, 300);
         }
 
         async function predict() {
             const prediction = await model.predict(webcam.canvas);
-            
             let highProb = 0;
-            for (let i = 0; i < maxPredictions; i++) {
-                const prob = prediction[i].probability.toFixed(2);
-                labelContainer.childNodes[i].innerHTML = prediction[i].className + ": " + prob;
-                
-                if (prob > highProb) {
-                    highProb = prob;
-                    // 확률 80% 이상일 때만 동작으로 인정
+            for (let i = 0; i < model.getTotalClasses(); i++) {
+                if (prediction[i].probability > highProb) {
+                    highProb = prediction[i].probability;
                     if (highProb > 0.8) currentPose = prediction[i].className;
                 }
             }
+        }
+
+        // 📊 [8주차] 스프레드시트 데이터 전송
+        function finishGame() {
+            const scriptURL = "부장님의_구글_앱스_스크립트_URL"; 
+            const accuracy = ((stats.total - stats.miss) / stats.total * 100).toFixed(1) + "%";
+            
+            fetch(scriptURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ score: score, left: stats.left, right: stats.right, both: stats.both, miss: stats.miss, accuracy: accuracy })
+            })
+            .then(() => {
+                alert(`게임 클리어!\n최종 점수: ${score}\n정확도: ${accuracy}\n데이터가 성공적으로 전송되었습니다.`);
+                document.getElementById("start-btn").style.display = "block";
+            });
         }
     </script>
 </body>
