@@ -2,18 +2,26 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>AI Rhythm Master - 161 BPM Demo</title>
+    <title>AI Rhythm Master - Final Version</title>
     <style>
         :root { --neon-blue: #00f3ff; --neon-pink: #ff00ff; --bg-dark: #1a1a2e; }
-        body { background-color: var(--bg-dark); color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
+        body { background-color: var(--bg-dark); color: white; font-family: 'Pretendard', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; overflow: hidden; }
         h1 { margin: 20px 0; color: var(--neon-blue); text-shadow: 0 0 10px var(--neon-blue); }
+        
         #game-wrapper { position: relative; width: 400px; height: 600px; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--neon-blue); border-radius: 15px; overflow: hidden; }
         #webcam-container { position: absolute; top: 10px; right: 10px; width: 100px; height: 100px; border: 2px solid var(--neon-pink); border-radius: 10px; z-index: 10; overflow: hidden; }
         #webcam-container canvas { width: 100%; height: 100%; }
         #game-canvas { width: 100%; height: 100%; }
+        
         #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 5; }
         .score-board { font-size: 20px; color: var(--neon-pink); font-weight: bold; }
-        .feedback { font-size: 40px; font-weight: 800; color: white; margin-top: 150px; text-align: center; width: 400px; position: absolute; pointer-events: none; }
+        .feedback { font-size: 40px; font-weight: 800; color: white; margin-top: 150px; text-align: center; width: 400px; position: absolute; pointer-events: none; z-index: 20; }
+        
+        /* 점수 애니메이션 스타일 */
+        #score-animation-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
+        .plus-score { position: absolute; font-size: 24px; font-weight: bold; color: var(--neon-blue); text-shadow: 0 0 5px var(--neon-blue); animation: floatUpFadeOut 0.8s ease-out forwards; }
+        @keyframes floatUpFadeOut { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-50px); } }
+
         #start-btn { padding: 15px 40px; font-size: 20px; background: transparent; color: var(--neon-blue); border: 2px solid var(--neon-blue); border-radius: 30px; cursor: pointer; margin-top: 20px; z-index: 100; }
         #start-btn:hover { background: var(--neon-blue); color: black; box-shadow: 0 0 20px var(--neon-blue); }
     </style>
@@ -21,13 +29,18 @@
 <body>
 
     <h1>AI RHYTHM MASTER</h1>
+    
     <div id="game-wrapper">
-        <div id="ui-layer"><div class="score-board">SCORE: <span id="score">0</span></div></div>
+        <div id="ui-layer">
+            <div class="score-board">SCORE: <span id="score">0</span></div>
+        </div>
         <div id="feedback" class="feedback"></div>
+        <div id="score-animation-container"></div>
         <div id="webcam-container"></div>
         <canvas id="game-canvas"></canvas>
     </div>
-    <button type="button" id="start-btn" onclick="init()">161 BPM DEMO START</button>
+
+    <button type="button" id="start-btn" onclick="init()">GAME START (161 BPM)</button>
 
     <audio id="bgm" src="bgm.mp3" preload="auto"></audio>
 
@@ -35,34 +48,41 @@
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     
     <script>
+        // 티쳐블 머신 모델 주소
         const URL = "https://teachablemachine.withgoogle.com/models/c9h0TWwjV/"; 
+        
+        // 부장님의 구글 앱스 스크립트 웹 앱 URL
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzbKb6msWvJ4D7pq-spXlRmxdyrjH9raYN53jo2jxx2_58QN809reiWVv_BL-2-70k/exec";
+
         let model, webcam, canvas, ctx, gameRunning = false;
         let score = 0, currentPose = "대기", notes = [];
-        
-        // 📊 8주차 통계 데이터
         let stats = { left: 0, right: 0, both: 0, miss: 0, total: 0 };
 
-        // 🎵 데모곡 설정 (161 BPM에 맞춘 20개 노트 구성)
+        // 161 BPM 데모곡 구성
         const demoSong = [0, 2, 1, 0, 2, 1, 0, 2, 1, 1, 0, 0, 2, 2, 1, 0, 2, 1, 0, 1]; 
         let noteIndex = 0;
-        const LANES = [80, 200, 320], HIT_ZONE_Y = 520;
+        const LANES = [80, 200, 320];
+        const HIT_ZONE_Y = 520;
 
         async function init() {
             document.getElementById("start-btn").style.display = "none";
             model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+            
             webcam = new tmImage.Webcam(200, 200, true);
-            await webcam.setup(); await webcam.play();
+            await webcam.setup();
+            await webcam.play();
             document.getElementById("webcam-container").appendChild(webcam.canvas);
             
             canvas = document.getElementById("game-canvas");
             canvas.width = 400; canvas.height = 600;
             ctx = canvas.getContext("2d");
             
-            // 초기화 및 음악 재생
             gameRunning = true; score = 0; noteIndex = 0; notes = [];
             stats = { left: 0, right: 0, both: 0, miss: 0, total: demoSong.length };
-            document.getElementById("bgm").currentTime = 0;
-            document.getElementById("bgm").play();
+            
+            const bgm = document.getElementById("bgm");
+            bgm.currentTime = 0;
+            bgm.play();
             
             spawnNote();
             requestAnimationFrame(gameLoop);
@@ -74,7 +94,7 @@
             const types = ["왼손", "양손", "오른손"];
             notes.push({ x: LANES[lane], y: -50, type: types[lane], color: lane === 1 ? "#ff00ff" : "#00f3ff" });
             
-            // 💡 161 BPM 최적화: 2박자 간격인 745ms로 설정
+            // 161 BPM에 맞춘 2박자 간격 (745ms)
             setTimeout(spawnNote, 745); 
         }
 
@@ -94,9 +114,20 @@
 
         function draw() {
             ctx.clearRect(0, 0, 400, 600);
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"; ctx.lineWidth = 2;
+
+            // 판정선
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(0, HIT_ZONE_Y); ctx.lineTo(400, HIT_ZONE_Y); ctx.stroke();
             
+            // 하단 라벨 (왼손, 양손, 오른손)
+            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("왼손", LANES[0], HIT_ZONE_Y + 40);
+            ctx.fillText("양손", LANES[1], HIT_ZONE_Y + 40);
+            ctx.fillText("오른손", LANES[2], HIT_ZONE_Y + 40);
+
+            // 네온 노트 그리기
             notes.forEach(note => {
                 ctx.fillStyle = note.color;
                 ctx.shadowBlur = 15; ctx.shadowColor = note.color;
@@ -107,12 +138,13 @@
 
         function updateNotes() {
             for (let i = notes.length - 1; i >= 0; i--) {
-                // 💡 161 BPM에 맞춘 시원시원한 낙하 속도
-                notes[i].y += 8; 
+                notes[i].y += 8; // 낙하 속도
                 
                 if (notes[i].y > HIT_ZONE_Y - 45 && notes[i].y < HIT_ZONE_Y + 45) {
                     if (currentPose === notes[i].type) {
                         showFeedback("GREAT!");
+                        showPlusScoreAnimation(notes[i].x, HIT_ZONE_Y); // 점수 애니메이션
+
                         score += 100; document.getElementById("score").innerText = score;
                         if(notes[i].type === "왼손") stats.left++;
                         else if(notes[i].type === "오른손") stats.right++;
@@ -122,6 +154,17 @@
                 }
                 if (notes[i].y > 600) { showFeedback("MISS"); stats.miss++; notes.splice(i, 1); }
             }
+        }
+
+        function showPlusScoreAnimation(x, y) {
+            const container = document.getElementById("score-animation-container");
+            const plusScore = document.createElement("div");
+            plusScore.classList.add("plus-score");
+            plusScore.innerText = "+100";
+            plusScore.style.left = (x - 25) + "px"; 
+            plusScore.style.top = (y - 50) + "px";
+            container.appendChild(plusScore);
+            setTimeout(() => { container.removeChild(plusScore); }, 800);
         }
 
         function showFeedback(text) {
@@ -141,18 +184,29 @@
             }
         }
 
-        // 📊 [8주차] 스프레드시트 데이터 전송
+        // 📊 게임 종료 후 스프레드시트로 통계 전송
         function finishGame() {
-            const scriptURL = "부장님의_구글_앱스_스크립트_URL"; 
             const accuracy = ((stats.total - stats.miss) / stats.total * 100).toFixed(1) + "%";
             
             fetch(scriptURL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ score: score, left: stats.left, right: stats.right, both: stats.both, miss: stats.miss, accuracy: accuracy })
+                body: JSON.stringify({ 
+                    score: score, 
+                    left: stats.left, 
+                    right: stats.right, 
+                    both: stats.both, 
+                    miss: stats.miss, 
+                    accuracy: accuracy 
+                })
             })
             .then(() => {
-                alert(`게임 클리어!\n최종 점수: ${score}\n정확도: ${accuracy}\n데이터가 성공적으로 전송되었습니다.`);
+                alert(`게임 종료!\n최종 점수: ${score}\n정확도: ${accuracy}\n데이터가 전송되었습니다.`);
+                document.getElementById("start-btn").style.display = "block";
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('데이터 전송 실패! 스크립트 URL 또는 설정을 확인해주세요.');
                 document.getElementById("start-btn").style.display = "block";
             });
         }
